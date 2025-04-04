@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard</title>
+    <!-- Include Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        height: 100vh;
+        box-sizing: border-box;
+      }
+
+      .dashboard-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        width: 100%;
+        /* Adjust height as needed */
+      }
+
+      .box {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        padding: 20px;
+      }
+
+      .location-box {
+        width: 400px;
+        height: 500px;
+        overflow: hidden;
+      }
+
+      .camera-box {
+        width: 500px;
+        height: 500px;
+        overflow: hidden;
+      }
+
+      .box-title {
+        color: #667eea;
+        margin-top: 0;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+      }
+
+      .location-data {
+        font-size: 16px;
+        line-height: 1.5;
+      }
+
+      #map-container {
+        width: 100%;
+        height: calc(100% - 100px);
+        border-radius: 5px;
+        margin-top: 15px;
+        overflow: hidden;
+      }
+
+      #map {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
+      #camera-feed {
+        width: 100%;
+        height: calc(100% - 70px);
+        border-radius: 5px;
+        background: #f5f5f5;
+        margin-top: 15px;
+        object-fit: contain;
+      }
+      #camera-feed {
+        transform: rotate(90deg);
+        display: block;
+      }
+
+      button {
+        background: #667eea;
+        color: white;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 15px;
+      }
+
+      button:hover {
+        background: #5a67d8;
+      }
+
+      /* New styling for sensor graphs section */
+      .sensor-graphs {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        margin-top: 20px;
+      }
+      .sensor-graphs h2 {
+        color: #667eea;
+        text-align: center;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+      }
+      .charts-container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+      }
+      .chart-box {
+        width: 600px;
+        height: 300px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        padding: 10px;
+      }
+    </style>
+    <!-- for new graphs -->
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin-top: 20px;
+      }
+      .chart-container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .chart-box {
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        margin: 10px;
+        padding: 10px;
+        width: 600px;
+        height: 400px;
+      }
+      .chart-box canvas {
+        width: 100%;
+        height: 100%;
+      }
+      .chart-box h3 {
+        margin: 0 0 10px;
+      }
+    </style>
+    <style>
+      /* Emergency butoon */
+      #sosModal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+      }
+
+      #modalContent {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        width: 300px;
+        margin: 20% auto;
+        box-shadow: 0px 0px 10px black;
+      }
+
+      #closeModal {
+        background-color: red;
+        color: white;
+        border: none;
+        padding: 10px;
+        cursor: pointer;
+        border-radius: 5px;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dashboard-container">
+      <div class="box location-box">
+        <h2 class="box-title">Live Location</h2>
+        <div class="location-data">
+          <p id="location">Fetching location...</p>
+        </div>
+        <div id="map-container">
+          <iframe
+            id="map"
+            src="about:blank"
+            width="100%"
+            height="100%"
+            frameborder="0"
+            style="border: 0"
+            allowfullscreen
+          ></iframe>
+        </div>
+        <button onclick="getLocation()">Refresh Location</button>
+      </div>
+
+      <div class="box camera-box">
+        <h2 class="box-title">Live Camera Feed</h2>
+        <img id="camera-feed" src="" alt="Live Camera Feed" />
+        <button onclick="getCameraFeed()">Refresh Feed</button>
+      </div>
+      <div class="box camera-box">
+        <h2 class="box-title">Thermal Camera Feed</h2>
+        <img id="camera-feed" src="/video_feed" alt="Thermal Camera Feed" />
+        <button onclick="getCameraFeed()">Refresh Feed</button>
+      </div>
+    </div>
+
+    <!-- Sensor Graphs Section -->
+    <!-- <div class="sensor-graphs">
+      <h2>Sensor Graphs</h2>
+      <div class="charts-container">
+        <div class="chart-box">
+          <canvas id="dhtChart"></canvas>
+        </div>
+        <div class="chart-box">
+          <canvas id="bmpChart"></canvas>
+        </div>
+        <div class="chart-box">
+          <canvas id="mq4Chart"></canvas>
+        </div>
+        <div class="chart-box">
+          <canvas id="miscChart"></canvas>
+        </div>
+      </div>
+    </div> -->
+
+    <script>
+      // SCRIPT CODE FOR LIVE LOCATION
+      function getLocation() {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            function (position) {
+              let lat = position.coords.latitude;
+              let lon = position.coords.longitude;
+              document.getElementById(
+                "location"
+              ).innerText = `Latitude: ${lat}, Longitude: ${lon}`;
+              document.getElementById(
+                "map"
+              ).src = `https://maps.google.com/maps?q=${lat},${lon}&z=15&output=embed`;
+              fetch("/update_location", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ latitude: lat, longitude: lon }),
+              }).catch((error) => {
+                console.error("Error sending location to server:", error);
+              });
+            },
+            function (error) {
+              console.error("Location error:", error);
+              document.getElementById("location").innerText =
+                "Unable to fetch location.";
+            }
+          );
+        } else {
+          alert("Geolocation is not supported on this device.");
+          document.getElementById("location").innerText =
+            "Geolocation not supported.";
+        }
+      }
+
+      // SCRIPT CODE FOR LIVE CAMERA FEED
+      function getCameraFeeds() {
+        fetch("/get_camera_urls")
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.normal_url) {
+              document.getElementById("camera-feed").src = data.normal_url;
+            } else {
+              document.getElementById("camera-feed").alt =
+                "Normal camera feed unavailable";
+            }
+
+            if (data.thermal_url) {
+              document.getElementById("thermal-feed").src = data.thermal_url;
+            } else {
+              document.getElementById("thermal-feed").alt =
+                "Thermal camera feed unavailable";
+            }
+          })
+          .catch((error) => {
+            console.error("Error fetching camera feeds:", error);
+          });
+      }
+
+      // Initialize on page load
+      window.onload = function () {
+        getLocation();
+        getCameraFeeds();
+      };
+    </script>
+
+    <div id="sosModal">
+      <div id="modalContent">
+        <h2>🚨 Emergency Alert! 🚨</h2>
+        <p>An SOS signal has been triggered!</p>
+        <button id="closeModal">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Sensor Graphs Script -->
+    <h1>Live Sensor Dashboard</h1>
+    <div class="chart-container">
+      <!-- DHT Charts -->
+      <div class="chart-box">
+        <h3>DHT Temperature</h3>
+        <canvas id="dhtTemperatureChart" width="600" height="400"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>DHT Humidity</h3>
+        <canvas id="dhtHumidityChart" width="600" height="400"></canvas>
+      </div>
+      <!-- BMP Charts -->
+      <div class="chart-box">
+        <h3>BMP Pressure</h3>
+        <canvas id="bmpPressureChart" width="600" height="400"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>BMP Altitude</h3>
+        <canvas id="bmpAltitudeChart" width="600" height="400"></canvas>
+      </div>
+      <!-- MQ4 Charts -->
+      <div class="chart-box">
+        <h3>MQ4 Analog Value</h3>
+        <canvas id="mq4AnalogChart" width="600" height="400"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>MQ4 PPM Estimate</h3>
+        <canvas id="mq4PPMChart" width="600" height="400"></canvas>
+      </div>
+      <!-- Other Sensors -->
+      <div class="chart-box">
+        <h3>Vibration</h3>
+        <canvas id="vibrationChart" width="600" height="400"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Sound Sensor</h3>
+        <canvas id="soundSensorChart" width="600" height="400"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Flame Sensor</h3>
+        <canvas id="flameSensorChart" width="600" height="400"></canvas>
+      </div>
+    </div>
+
+    <script>
+      // Global chart variables
+      var chartDHTTemperature = null;
+      var chartDHTHumidity = null;
+      var chartBMPPressure = null;
+      var chartBMPAltitude = null;
+      var chartMQ4Analog = null;
+      var chartMQ4PPM = null;
+      var chartVibration = null;
+      var chartSoundSensor = null;
+      var chartFlameSensor = null;
+
+      // Function to render/update all charts using incoming sensor data
+      function renderCharts(data) {
+        // Create common labels for the charts (e.g., 1, 2, 3, …)
+        const labels = data.map((_, index) => index + 1);
+
+        // Helper function: Convert a sensor value to a valid number (or 0 if NaN)
+        const parseValue = (value) => {
+          let num = Number(value);
+          return isNaN(num) ? 0 : num;
+        };
+
+        // Extract sensor arrays from the data array
+        const dhtTempValues = data.map((record) =>
+          parseValue(record.dht_temperature)
+        );
+        const dhtHumidityValues = data.map((record) =>
+          parseValue(record.dht_humidity)
+        );
+        const bmpPressureValues = data.map((record) =>
+          parseValue(record.bmp_pressure)
+        );
+        const bmpAltitudeValues = data.map((record) =>
+          parseValue(record.bmp_altitude)
+        );
+        const mq4AnalogValues = data.map((record) =>
+          parseValue(record.mq4_analog_value)
+        );
+        const mq4PPMValues = data.map((record) =>
+          parseValue(record.mq4_ppm_estimate)
+        );
+        const vibrationValues = data.map((record) =>
+          parseValue(record.vibration)
+        );
+        const soundSensorValues = data.map((record) =>
+          parseValue(record.sound_sensor)
+        );
+        const flameSensorValues = data.map((record) =>
+          parseValue(record.flame_sensor)
+        );
+
+        // Function to (re)create a chart
+        function createChart(
+          canvasId,
+          label,
+          sensorValues,
+          borderColor,
+          bgColor,
+          beginAtZero = true
+        ) {
+          const canvas = document.getElementById(canvasId);
+          const ctx = canvas.getContext("2d");
+          return new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: label,
+                  data: sensorValues,
+                  borderColor: borderColor,
+                  backgroundColor: bgColor,
+                  fill: true,
+                  tension: 0.2,
+                },
+              ],
+            },
+            options: {
+              scales: {
+                y: { beginAtZero: beginAtZero },
+              },
+            },
+          });
+        }
+
+        // Destroy existing charts before recreating
+        if (chartDHTTemperature) chartDHTTemperature.destroy();
+        if (chartDHTHumidity) chartDHTHumidity.destroy();
+        if (chartBMPPressure) chartBMPPressure.destroy();
+        if (chartBMPAltitude) chartBMPAltitude.destroy();
+        if (chartMQ4Analog) chartMQ4Analog.destroy();
+        if (chartMQ4PPM) chartMQ4PPM.destroy();
+        if (chartVibration) chartVibration.destroy();
+        if (chartSoundSensor) chartSoundSensor.destroy();
+        if (chartFlameSensor) chartFlameSensor.destroy();
+
+        // Create charts with desired options and colors
+        chartDHTTemperature = createChart(
+          "dhtTemperatureChart",
+          "DHT Temperature",
+          dhtTempValues,
+          "rgba(75, 192, 192, 1)",
+          "rgba(75, 192, 192, 0.2)"
+        );
+
+        chartDHTHumidity = createChart(
+          "dhtHumidityChart",
+          "DHT Humidity",
+          dhtHumidityValues,
+          "rgba(54, 162, 235, 1)",
+          "rgba(54, 162, 235, 0.2)"
+        );
+
+        chartBMPPressure = createChart(
+          "bmpPressureChart",
+          "BMP Pressure",
+          bmpPressureValues,
+          "rgba(255, 99, 132, 1)",
+          "rgba(255, 99, 132, 0.2)",
+          false
+        );
+
+        chartBMPAltitude = createChart(
+          "bmpAltitudeChart",
+          "BMP Altitude",
+          bmpAltitudeValues,
+          "rgba(255, 159, 64, 1)",
+          "rgba(255, 159, 64, 0.2)",
+          false
+        );
+
+        chartMQ4Analog = createChart(
+          "mq4AnalogChart",
+          "MQ4 Analog Value",
+          mq4AnalogValues,
+          "rgba(153, 102, 255, 1)",
+          "rgba(153, 102, 255, 0.2)"
+        );
+
+        chartMQ4PPM = createChart(
+          "mq4PPMChart",
+          "MQ4 PPM Estimate",
+          mq4PPMValues,
+          "rgba(255, 206, 86, 1)",
+          "rgba(255, 206, 86, 0.2)"
+        );
+
+        chartVibration = createChart(
+          "vibrationChart",
+          "Vibration",
+          vibrationValues,
+          "rgba(201, 203, 207, 1)",
+          "rgba(201, 203, 207, 0.2)"
+        );
+
+        chartSoundSensor = createChart(
+          "soundSensorChart",
+          "Sound Sensor",
+          soundSensorValues,
+          "rgba(255, 99, 132, 1)",
+          "rgba(255, 99, 132, 0.2)"
+        );
+
+        chartFlameSensor = createChart(
+          "flameSensorChart",
+          "Flame Sensor",
+          flameSensorValues,
+          "rgba(255, 159, 64, 1)",
+          "rgba(255, 159, 64, 0.2)"
+        );
+      }
+
+      // Connect to Socket.IO
+      var socket = io();
+      socket.on("sensor_update", function (data) {
+        console.log("Received sensor update:", data);
+        renderCharts(data);
+      });
+
+      socket.on("sos_alert", function (data) {
+        document.getElementById("sosModal").style.display = "block";
+      });
+
+      document
+        .getElementById("closeModal")
+        .addEventListener("click", function () {
+          document.getElementById("sosModal").style.display = "none";
+        });
+    </script>
+  </body>
+</html>
